@@ -95,7 +95,7 @@ static gnrc_pktsnip_t *_recv(gnrc_netdev2_t *gnrc_netdev2)
         DEBUG("gnrc_netdev2_eth: received packet from %02x:%02x:%02x:%02x:%02x:%02x "
                 "of length %d\n",
                 hdr->src[0], hdr->src[1], hdr->src[2], hdr->src[3], hdr->src[4],
-                hdr->src[5], nread);
+                hdr->src[5], (size_t) nread);
 #if defined(MODULE_OD) && ENABLE_DEBUG
         od_hex_dump(hdr, nread, OD_WIDTH_DEFAULT);
 #endif
