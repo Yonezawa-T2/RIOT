@@ -15,7 +15,7 @@ If XBee is connected to a UART port other than 0, change `XBEE_UART` variable
 in the Makefile. If the baudrate is other than 9600, configure it in
 `xbee_conf.h`.
 
-![organization of modules and devices](img/page_001.svg)
+![organization of modules and devices](img/page_001.png)
 
 ## Running
 
@@ -41,7 +41,7 @@ in the Makefile. If the baudrate is other than 9600, configure it in
    RIOT searches `fd00::3` over XBee, so that you will see LEDs, if present, on
    your USB-serial interface blinking.
 
-![](img/page_002.svg)
+![](img/page_002.png)
 
 Note neighbor soliciation for 6LoWPAN violates RFC 6775 (Neighbor Discovery
 Optimization for 6LoWPAN) Section 5.1, which prohibits multicasting of neighbor
@@ -51,7 +51,7 @@ solicitation, so that this behavior may be fixed on future version of RIOT.
 
 Suppose we have two OS Xs, `OS X 1` and `OS X 2`, with XBees connected.
 
-![](img/page_003.svg)
+![](img/page_003.png)
 
 1. `sudo ./bin/native/gnrc_xbee_border_router.elf tap0 -c /dev/tty.usbserial-00000000` on both OS X.
 2. In RIOT 1: `ifconfig 6 add unicast fd00::2/64`, where 6 is replaced with
@@ -79,7 +79,7 @@ Suppose we have two OS Xs, `OS X 1` and `OS X 2`, with XBees connected.
 16. On OS X 1, type some lines on the terminal. The lines will appear on OS X 2.
 17. On OS X 2, type some lines on the terminal. The lines will appear on OS X 1.
 
-![](img/page_004.svg)
+![](img/page_004.png)
 
 #### Scenario 3, routing on DAG network.
 
@@ -88,7 +88,7 @@ connected. `OS X 1` can communicate with `OS X 2` and `OS X 2` can communicate
 with `OS X 3` but `OS X 1` cannot communicate with `OS X 3` directly.  Uncomment
 `CFLAGS += "XBEE_DENIED_ADDRESSES={...}` in Makefile to emulate such network.
 
-![](img/page_005.svg)
+![](img/page_005.png)
 
 1. On OS X 1, `sudo ./bin/native/gnrc_xbee_border_router.elf tap0 -c /dev/tty.usbserial-00000000`.
 2. On OS X 2 and 3, goto `examples/gnrc_border_router` directory then
