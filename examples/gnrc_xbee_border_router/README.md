@@ -15,7 +15,7 @@ If XBee is connected to a UART port other than 0, change `XBEE_UART` variable
 in the Makefile. If the baudrate is other than 9600, configure it in
 `xbee_conf.h`.
 
-See `img/page_001.svg` for the organization of modules and devices.
+![organization of modules and devices](img/page_001.svg)
 
 ## Running
 
@@ -41,15 +41,17 @@ See `img/page_001.svg` for the organization of modules and devices.
    RIOT searches `fd00::3` over XBee, so that you will see LEDs, if present, on
    your USB-serial interface blinking.
 
-See also `img/page_002.svg`. Note neighbor soliciation for 6LoWPAN violates RFC
-6775 (Neighbor Discovery Optimization for 6LoWPAN) Section 5.1, which prohibits
-multicasting of neighbor solicitation, so that this behavior may be fixed on
-future version of RIOT.
+![](img/page_002.svg)
+
+Note neighbor soliciation for 6LoWPAN violates RFC 6775 (Neighbor Discovery
+Optimization for 6LoWPAN) Section 5.1, which prohibits multicasting of neighbor
+solicitation, so that this behavior may be fixed on future version of RIOT.
 
 #### Scenario 2, TCP/IPv6 over XBee between two OS Xs
 
-Suppose we have two OS Xs, `OS X 1` and `OS X 2`, with XBees connected
-(`img/page_003.svg`).
+Suppose we have two OS Xs, `OS X 1` and `OS X 2`, with XBees connected.
+
+![](img/page_003.svg)
 
 1. `sudo ./bin/native/gnrc_xbee_border_router.elf tap0 -c /dev/tty.usbserial-00000000` on both OS X.
 2. In RIOT 1: `ifconfig 6 add unicast fd00::2/64`, where 6 is replaced with
@@ -77,15 +79,16 @@ Suppose we have two OS Xs, `OS X 1` and `OS X 2`, with XBees connected
 16. On OS X 1, type some lines on the terminal. The lines will appear on OS X 2.
 17. On OS X 2, type some lines on the terminal. The lines will appear on OS X 1.
 
-See also `img/page_003.svg` and `img/page_004.svg`
+![](img/page_004.svg)
 
 #### Scenario 3, routing on DAG network.
 
 Suppose we have three OS Xs, `OS X 1`, `OS X 2`, and `OS X 3`, with XBees
-connected (`img/page_005.svg`). `OS X 1` can communicate with `OS X 2` and `OS X
-2` can communicate with `OS X 3` but `OS X 1` cannot communicate with `OS X 3`
-directly.  Uncomment `CFLAGS += "XBEE_DENIED_ADDRESSES={...}` in Makefile to
-emulate such network.
+connected. `OS X 1` can communicate with `OS X 2` and `OS X 2` can communicate
+with `OS X 3` but `OS X 1` cannot communicate with `OS X 3` directly.  Uncomment
+`CFLAGS += "XBEE_DENIED_ADDRESSES={...}` in Makefile to emulate such network.
+
+![](img/page_005.svg)
 
 1. On OS X 1, `sudo ./bin/native/gnrc_xbee_border_router.elf tap0 -c /dev/tty.usbserial-00000000`.
 2. On OS X 2 and 3, goto `examples/gnrc_border_router` directory then
