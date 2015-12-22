@@ -481,6 +481,7 @@ ipv6_addr_t *gnrc_ipv6_netif_find_addr(kernel_pid_t pid, const ipv6_addr_t *addr
  * @param[out] out      The reference to the found address on the interface.
  *                      Must be a pointer to NULL on calling and may stay
  *                      unchanged if no match can be found.
+ *                      Must not be NULL.
  *
  * @param[in] prefix    The prefix you want to search for.
  *
