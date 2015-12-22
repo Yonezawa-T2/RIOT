@@ -32,6 +32,14 @@
 #define ENABLE_DEBUG    (0)
 #include "debug.h"
 
+#define XBEE_ENABLE_DETAILED_DEBUG (0)
+
+#if XBEE_ENABLE_DETAILED_DEBUG
+#define XBEE_DETAILED_DEBUG(...) DEBUG(__VA_ARGS__)
+#else
+#define XBEE_DETAILED_DEBUG(...)
+#endif
+
 /**
  * @brief   Internal driver event type when RX is finished
  */
@@ -82,6 +90,51 @@ typedef struct {
     uint8_t data_len;       /**< number ob bytes written to @p data */
 } resp_t;
 
+
+#if XBEE_NUM_RX_BUFFER > 1
+
+inline static int _current_rx_buf_index_to_put(xbee_t *dev) {
+    return cib_prepare_put(&(dev->rx_buf_index));
+}
+
+inline static int _current_rx_buf_index_to_get(xbee_t *dev) {
+    return cib_peek(&(dev->rx_buf_index));
+}
+
+inline static void _finish_putting_to_rx_buf(xbee_t *dev) {
+    cib_put(&(dev->rx_buf_index));
+}
+
+inline static void _finish_getting_from_rx_buf(xbee_t *dev) {
+    dev->rx_buf[cib_get(&(dev->rx_buf_index))].count = 0;
+}
+
+#else /* #if XBEE_NUM_RX_BUFFER > 1 */
+
+inline static int _current_rx_buf_index_to_put(xbee_t *dev) {
+    (void) dev;
+    return 0;
+}
+
+inline static int _current_rx_buf_index_to_get(xbee_t *dev) {
+    (void) dev;
+    return 0;
+}
+
+inline static void _finish_putting_to_rx_buf(xbee_t *dev) {
+    (void) dev;
+    /* do nothing */
+}
+
+inline static void _finish_getting_from_rx_buf(xbee_t *dev) {
+    dev->rx_buf[0].count = 0;
+}
+
+#endif /* #if XBEE_NUM_RX_BUFFER > 1 */
+
+inline static void _put_to_rx_buf(xbee_t *dev, int index, uint8_t c) {
+    dev->rx_buf[index].buffer[dev->rx_buf[index].count++] = c;
+}
 
 /*
  * Driver's internal utility functions
@@ -144,60 +197,97 @@ static void _rx_cb(void *arg, uint8_t c)
     xbee_t *dev = (xbee_t *)arg;
     msg_t msg;
 
+    XBEE_DETAILED_DEBUG("xbee: rx %02x", c);
+
     switch (dev->int_state) {
         case XBEE_INT_STATE_IDLE:
+            XBEE_DETAILED_DEBUG(" IDLE");
             /* check for beginning of new data frame */
             if (c == API_START_DELIMITER) {
+                XBEE_DETAILED_DEBUG(" -> SIZE1");
                 dev->int_state = XBEE_INT_STATE_SIZE1;
             }
+            XBEE_DETAILED_DEBUG("\n");
             break;
         case XBEE_INT_STATE_SIZE1:
+            XBEE_DETAILED_DEBUG(" SIZE1 -> SIZE2\n");
             dev->int_size = ((uint16_t)c) << 8;
             dev->int_state = XBEE_INT_STATE_SIZE2;
             break;
         case XBEE_INT_STATE_SIZE2:
+            XBEE_DETAILED_DEBUG(" SIZE2 -> TYPE\n");
             dev->int_size += c;
             dev->int_state = XBEE_INT_STATE_TYPE;
             break;
         case XBEE_INT_STATE_TYPE:
+            XBEE_DETAILED_DEBUG(" TYPE");
             if (c == API_ID_RX_SHORT_ADDR || c == API_ID_RX_LONG_ADDR) {
+#if XBEE_NUM_RX_BUFFER > 1
+                int index = cib_prepare_put(&(dev->rx_buf_index));
+#else
+                int index = (dev->rx_buf[0].count == 0) ? 0 : -1;
+#endif
+
                 /* in case old data was not processed, ignore incoming data */
-                if (dev->rx_count != 0) {
+                if (index == -1) {
+                    DEBUG("xbee: old data was not processed, ignore incoming data\n");
                     dev->int_state = XBEE_INT_STATE_IDLE;
                     return;
                 }
+                XBEE_DETAILED_DEBUG(" -> RX\n");
                 dev->rx_limit = dev->int_size + 1;
-                dev->rx_buf[dev->rx_count++] = c;
+                _put_to_rx_buf(dev, index, c);
                 dev->int_state = XBEE_INT_STATE_RX;
             }
             else if (c == API_ID_AT_RESP) {
+                XBEE_DETAILED_DEBUG(" -> RESP\n");
                 dev->resp_limit = dev->int_size;
                 dev->int_state = XBEE_INT_STATE_RESP;
             }
             else {
+                XBEE_DETAILED_DEBUG(" -> IDLE\n");
                 dev->int_state = XBEE_INT_STATE_IDLE;
             }
             break;
         case XBEE_INT_STATE_RESP:
+            XBEE_DETAILED_DEBUG(" RESP");
             dev->resp_buf[dev->resp_count++] = c;
             if (dev->resp_count == dev->resp_limit) {
                 /* here we ignore the checksum to prevent deadlocks */
+                XBEE_DETAILED_DEBUG(" -> IDLE");
                 mutex_unlock(&(dev->resp_lock));
                 dev->int_state = XBEE_INT_STATE_IDLE;
             }
+            XBEE_DETAILED_DEBUG("\n");
             break;
         case XBEE_INT_STATE_RX:
-            dev->rx_buf[dev->rx_count++] = c;
-            if (dev->rx_count == dev->rx_limit) {
+            XBEE_DETAILED_DEBUG(" RX");
+
+            int index = _current_rx_buf_index_to_put(dev);
+
+            _put_to_rx_buf(dev, index, c);
+            if (dev->rx_buf[index].count == dev->rx_limit) {
+                XBEE_DETAILED_DEBUG(" -> IDLE");
                 /* packet is complete */
+                _finish_putting_to_rx_buf(dev);
+
+#if XBEE_NUM_RX_BUFFER > 1
+                /* only send one message per series of packets */
+                if (cib_avail(&(dev->rx_buf_index)) == 1) {
+#endif
                 msg.type = GNRC_NETDEV_MSG_TYPE_EVENT;
                 msg.content.value = ISR_EVENT_RX_DONE;
                 msg_send_int(&msg, dev->mac_pid);
+#if XBEE_NUM_RX_BUFFER > 1
+                }
+#endif
                 dev->int_state = XBEE_INT_STATE_IDLE;
             }
+            XBEE_DETAILED_DEBUG("\n");
             break;
         default:
             /* this should never be the case */
+            XBEE_DETAILED_DEBUG("xbee: invalid state\n");
             break;
     }
 }
@@ -448,7 +538,12 @@ int xbee_init(xbee_t *dev, const xbee_params_t *params)
     mutex_init(&(dev->tx_lock));
     mutex_init(&(dev->resp_lock));
     dev->resp_limit = 1;    /* needs to be greater then 0 initially */
-    dev->rx_count = 0;
+#if XBEE_NUM_RX_BUFFER > 1
+    cib_init(&(dev->rx_buf_index), XBEE_NUM_RX_BUFFER);
+#endif
+    for (int i = 0; i < XBEE_NUM_RX_BUFFER; i++) {
+        dev->rx_buf[i].count = 0;
+    }
     /* initialize UART and GPIO pins */
     if (uart_init(params->uart, params->baudrate, _rx_cb, dev) < 0) {
         DEBUG("xbee: Error initializing UART\n");
@@ -613,6 +708,7 @@ static int _send(gnrc_netdev_t *netdev, gnrc_pktsnip_t *pkt)
         pos += payload->size;
         payload = payload->next;
     }
+    DEBUG("\n");
     /* set checksum */
     dev->tx_buf[pos] = _cksum(dev->tx_buf, pos);
     /* start transmission */
@@ -622,7 +718,6 @@ static int _send(gnrc_netdev_t *netdev, gnrc_pktsnip_t *pkt)
     /* release TX lock */
     mutex_unlock(&(dev->tx_lock));
     /* return number of payload byte */
-    DEBUG("\n");
     return (int)size;
 }
 
@@ -727,9 +822,35 @@ static int _set(gnrc_netdev_t *netdev, netopt_t opt, void *value, size_t value_l
     }
 }
 
+static void _rx_done_event(xbee_t *dev);
+
 static void _isr_event(gnrc_netdev_t *netdev, uint32_t event_type)
 {
     xbee_t *dev = (xbee_t *)netdev;
+
+    /* check device */
+    if (dev == NULL) {
+        return;
+    }
+    /* check rx callback and event type */
+    if (event_type != ISR_EVENT_RX_DONE) {
+        return;
+    }
+
+#if XBEE_NUM_RX_BUFFER > 1
+    DEBUG("xbee: processsing %d buffers\n", cib_avail(&(dev->rx_buf_index)));
+    while (cib_avail(&(dev->rx_buf_index)) > 0) {
+        _rx_done_event(dev);
+
+        thread_yield();
+    }
+#else
+    _rx_done_event(dev);
+#endif
+}
+
+static void _rx_done_event(xbee_t *dev)
+{
     gnrc_pktsnip_t *pkt_head;
     gnrc_pktsnip_t *pkt;
     gnrc_netif_hdr_t *hdr;
@@ -737,18 +858,17 @@ static void _isr_event(gnrc_netdev_t *netdev, uint32_t event_type)
     size_t addr_len;
     uint8_t cksum = 0;
 
-    /* check device */
-    if (dev == NULL) {
-        return;
-    }
-    /* check rx callback and event type */
-    if (event_type != ISR_EVENT_RX_DONE || dev->event_cb == NULL) {
-        dev->rx_count = 0;
+    int buf_index = _current_rx_buf_index_to_get(dev);
+    uint8_t *buffer = dev->rx_buf[buf_index].buffer;
+    int count = dev->rx_buf[buf_index].count;
+
+    if (dev->event_cb == NULL) {
+        _finish_getting_from_rx_buf(dev);
         return;
     }
 
     /* read address length */
-    if (dev->rx_buf[0] == API_ID_RX_SHORT_ADDR) {
+    if (buffer[0] == API_ID_RX_SHORT_ADDR) {
         addr_len = IEEE802154_SHORT_ADDRESS_LEN;
     }
     else {
@@ -759,10 +879,10 @@ static void _isr_event(gnrc_netdev_t *netdev, uint32_t event_type)
     if (addr_len == 8) {
         uint8_t denied_addresses[] = XBEE_DENIED_ADDRESSES;
         for (size_t i = 0; i < sizeof(denied_addresses) / 8; i++) {
-            if (memcmp(&(dev->rx_buf[1]),
+            if (memcmp(&(buffer[1]),
                        &denied_addresses[i * 8],
                        addr_len) == 0) {
-                dev->rx_count = 0;
+                _finish_getting_from_rx_buf(dev);
 
                 DEBUG("xbee: dropping denied packet\n");
 
@@ -773,12 +893,12 @@ static void _isr_event(gnrc_netdev_t *netdev, uint32_t event_type)
 #endif
 
     /* check checksum for correctness */
-    for (int i = 0; i < dev->rx_limit; i++) {
-        cksum += dev->rx_buf[i];
+    for (int i = 0; i < count; i++) {
+        cksum += buffer[i];
     }
     if (cksum != 0xff) {
         DEBUG("xbee: Received packet with incorrect checksum, dropping it\n");
-        dev->rx_count = 0;
+        _finish_getting_from_rx_buf(dev);
         return;
     }
 
@@ -788,16 +908,16 @@ static void _isr_event(gnrc_netdev_t *netdev, uint32_t event_type)
                                GNRC_NETTYPE_NETIF);
     if (pkt_head == NULL) {
         DEBUG("xbee: Error allocating netif header in packet buffer on RX\n");
-        dev->rx_count = 0;
+        _finish_getting_from_rx_buf(dev);
         return;
     }
     hdr = (gnrc_netif_hdr_t *)pkt_head->data;
     hdr->src_l2addr_len = (uint8_t)addr_len;
     hdr->dst_l2addr_len = (uint8_t)addr_len;
     hdr->if_pid = dev->mac_pid;
-    hdr->rssi = dev->rx_buf[1 + addr_len]; // API ID + source address
+    hdr->rssi = buffer[1 + addr_len]; // API ID + source address
     hdr->lqi = 0;
-    gnrc_netif_hdr_set_src_addr(hdr, &(dev->rx_buf[1]), addr_len);
+    gnrc_netif_hdr_set_src_addr(hdr, &(buffer[1]), addr_len);
     if (addr_len == 2) {
         gnrc_netif_hdr_set_dst_addr(hdr, dev->addr_short, IEEE802154_SHORT_ADDRESS_LEN);
     }
@@ -806,12 +926,12 @@ static void _isr_event(gnrc_netdev_t *netdev, uint32_t event_type)
     }
     pos = 3 + addr_len;
     /* allocate and copy payload */
-    pkt = gnrc_pktbuf_add(pkt_head, &(dev->rx_buf[pos]), dev->rx_limit - pos - 1,
+    pkt = gnrc_pktbuf_add(pkt_head, &(buffer[pos]), count - pos - 1,
                           dev->proto);
     if (pkt == NULL) {
         DEBUG("xbee: Error allocating payload in packet buffer on RX\n");
         gnrc_pktbuf_release(pkt_head);
-        dev->rx_count = 0;
+        _finish_getting_from_rx_buf(dev);
         return;
     }
 
@@ -822,7 +942,7 @@ static void _isr_event(gnrc_netdev_t *netdev, uint32_t event_type)
     }
 
     DEBUG(", RSSI: -%d dBm", hdr->rssi);
-    DEBUG(", options: %02x", (uint8_t) dev->rx_buf[1 + addr_len + 1]); // API ID + source address + RSSI
+    DEBUG(", options: %02x", (uint8_t) buffer[1 + addr_len + 1]); // API ID + source address + RSSI
     DEBUG(", payload:");
 
     for (size_t i = 0; i < pkt->size; i++) {
@@ -834,7 +954,7 @@ static void _isr_event(gnrc_netdev_t *netdev, uint32_t event_type)
     /* pass on the received packet */
     dev->event_cb(NETDEV_EVENT_RX_COMPLETE, pkt);
     /* reset RX byte counter to enable receiving of the next packet */
-    dev->rx_count = 0;
+    _finish_getting_from_rx_buf(dev);
 }
 
 /*

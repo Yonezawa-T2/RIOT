@@ -89,6 +89,24 @@ static inline int cib_get(cib_t *__restrict cib)
 }
 
 /**
+ * @brief Get the index of the current item in buffer.
+ *
+ * @param[in] cib   corresponding *cib* to buffer.
+ *                  Must not be NULL.
+ * @return index of current item, -1 if the buffer is empty
+ */
+static inline int cib_peek(cib_t *__restrict cib)
+{
+    unsigned int avail = cib_avail(cib);
+
+    if (avail > 0) {
+        return (int) ((cib->read_count + 1) & cib->mask);
+    }
+
+    return -1;
+}
+
+/**
  * @brief Get index for item in buffer to put to.
  *
  * @param[in,out] cib   corresponding *cib* to buffer.
@@ -102,6 +120,25 @@ static inline int cib_put(cib_t *__restrict cib)
     /* We use a signed compare, because the mask is -1u for an empty CIB. */
     if ((int) avail <= (int) cib->mask) {
         return (int) (cib->write_count++ & cib->mask);
+    }
+
+    return -1;
+}
+
+/**
+ * @brief Get next index for item in buffer to put to.
+ *
+ * @param[in] cib   corresponding *cib* to buffer.
+ *                  Must not be NULL.
+ * @return next index of item to put to, -1 if the buffer is full
+ */
+static inline int cib_prepare_put(cib_t *__restrict cib)
+{
+    unsigned int avail = cib_avail(cib);
+
+    /* We use a signed compare, because the mask is -1u for an empty CIB. */
+    if ((int) avail <= (int) cib->mask) {
+        return (int) ((cib->write_count + 1) & cib->mask);
     }
 
     return -1;

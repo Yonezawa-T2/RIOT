@@ -71,6 +71,15 @@ extern "C" {
 #define XBEE_DEFAULT_CHANNEL        (23U)
 #endif
 
+#ifndef XBEE_NUM_RX_BUFFER
+/**
+ * @brief   Number of rx buffers
+ *
+ * Must be power of two
+ */
+#define XBEE_NUM_RX_BUFFER          (1)
+#endif
+
 /**
  * @name    Address flags
  * @{
@@ -105,6 +114,14 @@ typedef enum {
 } xbee_rx_state_t;
 
 /**
+ * @brief   XBee receiving data buffer
+ */
+typedef struct {
+    uint8_t buffer[XBEE_MAX_PKT_LENGTH];/**< receiving data buffer */
+    uint8_t count;                   /**< count of available bytes  */
+} xbee_rx_buffer_t;
+
+/**
  * @brief   XBee device descriptor
  */
 typedef struct {
@@ -136,8 +153,10 @@ typedef struct {
     uint16_t resp_count;                /**< counter for ongoing transmission */
     uint16_t resp_limit;                /**< size RESP frame in transferred */
     /* buffer and synchronization for incoming network packets */
-    uint8_t rx_buf[XBEE_MAX_PKT_LENGTH];/**< receiving data buffer */
-    uint16_t rx_count;                  /**< counter for ongoing transmission */
+#if XBEE_NUM_RX_BUFFER > 1
+    cib_t rx_buf_index;                 /**< queue of index of rx_buf */
+#endif
+    xbee_rx_buffer_t rx_buf[XBEE_NUM_RX_BUFFER]; /**< receiving data buffer */
     uint16_t rx_limit;                  /**< size RX frame transferred */
 } xbee_t;
 
