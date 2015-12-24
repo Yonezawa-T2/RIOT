@@ -29,7 +29,7 @@
 #include "net/ieee802154.h"
 #include "periph/cpuid.h"
 
-#define ENABLE_DEBUG    (0)
+#define ENABLE_DEBUG    (1)
 #include "debug.h"
 
 #define XBEE_ENABLE_DETAILED_DEBUG (0)

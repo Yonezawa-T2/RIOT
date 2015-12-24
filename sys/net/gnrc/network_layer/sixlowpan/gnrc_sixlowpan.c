@@ -24,7 +24,7 @@
 #include "net/gnrc/sixlowpan/netif.h"
 #include "net/sixlowpan.h"
 
-#define ENABLE_DEBUG    (0)
+#define ENABLE_DEBUG    (1)
 #include "debug.h"
 
 #if ENABLE_DEBUG

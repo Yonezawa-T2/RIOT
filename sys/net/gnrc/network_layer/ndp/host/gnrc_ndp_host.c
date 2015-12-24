@@ -21,7 +21,7 @@
 
 #include "net/gnrc/ndp/host.h"
 
-#define ENABLE_DEBUG    (0)
+#define ENABLE_DEBUG    (1)
 #include "debug.h"
 
 static inline void _reschedule_rtr_sol(gnrc_ipv6_netif_t *iface, uint32_t delay)
