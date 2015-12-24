@@ -26,7 +26,7 @@ CFLAGS += -g
 
 # Uncomment this to emulate wireless network in which we cannot communicate to
 # some nodes directly.
-# CFLAGS += "-DXBEE_DENIED_ADDRESSES={ 0x02, 0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0x02, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11 }"
+# CFLAGS += "-DXBEE_DENIED_ADDRESSES={ 0x00, 0x13, 0xa2, 0x00, 0x40, 0xc1, 0x5a, 0xbc }"
 
 # Include packages that pull up and auto-init the link layer.
 # NOTE: 6LoWPAN will be included if IEEE802.15.4 devices are present

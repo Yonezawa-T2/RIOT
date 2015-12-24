@@ -78,7 +78,7 @@ extern "C" {
  *
  * Must be power of two
  */
-#define XBEE_NUM_RX_BUFFER          (1)
+#define XBEE_NUM_RX_BUFFER          (128)
 #endif
 
 /**

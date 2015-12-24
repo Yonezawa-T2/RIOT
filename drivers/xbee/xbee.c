@@ -878,7 +878,7 @@ static void _isr_event(gnrc_netdev_t *netdev, uint32_t event_type)
     }
 
 #if XBEE_NUM_RX_BUFFER > 1
-    DEBUG("xbee: processsing %d buffers\n", cib_avail(&(dev->rx_buf_index)));
+    DEBUG("xbee: processing %d buffers\n", cib_avail(&(dev->rx_buf_index)));
     while (cib_avail(&(dev->rx_buf_index)) > 0) {
         _rx_done_event(dev);
 
