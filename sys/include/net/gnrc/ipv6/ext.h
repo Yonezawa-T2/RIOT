@@ -49,8 +49,7 @@ extern "C" {
  * @return  true, on success - continue packet processing.
  * @return  false, on failure - stop packet processing.
  */
-bool gnrc_ipv6_ext_demux(kernel_pid_t iface, gnrc_pktsnip_t *pkt,
-                         uint8_t nh);
+bool gnrc_ipv6_ext_demux(kernel_pid_t iface, gnrc_pktsnip_t *pkt, uint8_t nh);
 
 /**
  * @brief   Builds an extension header for sending.

@@ -103,14 +103,14 @@ kernel_pid_t gnrc_ipv6_init(void)
 void gnrc_ipv6_demux(kernel_pid_t iface, gnrc_pktsnip_t *pkt, uint8_t nh)
 {
     int receiver_num;
+    bool interested = false;
 
     pkt->type = gnrc_nettype_from_protnum(nh);
 
     switch (nh) {
 #ifdef MODULE_GNRC_ICMPV6
         case PROTNUM_ICMPV6:
-            DEBUG("ipv6: handle ICMPv6 packet (nh = %u)\n", nh);
-            gnrc_icmpv6_demux(iface, pkt);
+            interested = true;
             break;
 #endif
 #ifdef MODULE_GNRC_IPV6_EXT
@@ -121,15 +121,13 @@ void gnrc_ipv6_demux(kernel_pid_t iface, gnrc_pktsnip_t *pkt, uint8_t nh)
         case PROTNUM_IPV6_EXT_AH:
         case PROTNUM_IPV6_EXT_ESP:
         case PROTNUM_IPV6_EXT_MOB:
-            DEBUG("ipv6: handle extension header (nh = %u)\n", nh);
-            if (!gnrc_ipv6_ext_demux(iface, pkt, nh)) {
-                DEBUG("ipv6: stop packet processing.\n");
-                return;
-            }
+            interested = true;
+
+            break;
 #endif
         case PROTNUM_IPV6:
-            DEBUG("ipv6: handle encapsulated IPv6 packet (nh = %u)\n", nh);
-            _decapsulate(pkt);
+            interested = true;
+
             break;
         default:
             (void)iface;
@@ -142,17 +140,60 @@ void gnrc_ipv6_demux(kernel_pid_t iface, gnrc_pktsnip_t *pkt, uint8_t nh)
 
     if (receiver_num == 0) {
         DEBUG("ipv6: unable to forward packet as no one is interested in it\n");
-        gnrc_pktbuf_release(pkt);
+    } else {
+        if (!interested) {
+            /* IPv6 is not interested anymore so `- 1` */
+            receiver_num--;
+        }
+
+        gnrc_pktbuf_hold(pkt, receiver_num);
+
+        /* XXX can't use gnrc_netapi_dispatch_receive() twice here since a call to that function
+         *     implicitly hands all rights to the packet to one of the receiving threads. As a
+         *     result, the second call to gnrc_netapi_dispatch_receive() would be invalid */
+        _dispatch_rcv_pkt(pkt->type, GNRC_NETREG_DEMUX_CTX_ALL, pkt);
+        _dispatch_rcv_pkt(GNRC_NETTYPE_IPV6, nh, pkt);
+    }
+
+    if (!interested) {
         return;
     }
 
-    gnrc_pktbuf_hold(pkt, receiver_num - 1);    /* IPv6 is not interested anymore so `- 1` */
+    switch (nh) {
+#ifdef MODULE_GNRC_ICMPV6
+    case PROTNUM_ICMPV6:
+        DEBUG("ipv6: handle ICMPv6 packet (nh = %u)\n", nh);
+        gnrc_icmpv6_demux(iface, pkt);
+        break;
+#endif
+#ifdef MODULE_GNRC_IPV6_EXT
+    case PROTNUM_IPV6_EXT_HOPOPT:
+    case PROTNUM_IPV6_EXT_DST:
+    case PROTNUM_IPV6_EXT_RH:
+    case PROTNUM_IPV6_EXT_FRAG:
+    case PROTNUM_IPV6_EXT_AH:
+    case PROTNUM_IPV6_EXT_ESP:
+    case PROTNUM_IPV6_EXT_MOB:
+        DEBUG("ipv6: handle extension header (nh = %u)\n", nh);
 
-    /* XXX can't use gnrc_netapi_dispatch_receive() twice here since a call to that function
-     *     implicitly hands all rights to the packet to one of the receiving threads. As a result,
-     *     the second call to gnrc_netapi_dispatch_receive() would be invalid */
-    _dispatch_rcv_pkt(pkt->type, GNRC_NETREG_DEMUX_CTX_ALL, pkt);
-    _dispatch_rcv_pkt(GNRC_NETTYPE_IPV6, nh, pkt);
+        if (!gnrc_ipv6_ext_demux(iface, pkt, nh)) {
+            DEBUG("ipv6: unable to parse extension headers.\n");
+
+            gnrc_pktbuf_release(pkt);
+            return;
+        }
+
+        return;
+#endif
+    case PROTNUM_IPV6:
+        DEBUG("ipv6: handle encapsulated IPv6 packet (nh = %u)\n", nh);
+        _decapsulate(pkt);
+        return;
+    default:
+        break;
+    }
+
+    gnrc_pktbuf_release(pkt);
 }
 
 /* internal functions */
