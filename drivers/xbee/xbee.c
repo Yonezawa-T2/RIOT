@@ -234,6 +234,15 @@ static void _rx_cb(void *arg, uint8_t c)
                     dev->int_state = XBEE_INT_STATE_IDLE;
                     return;
                 }
+
+                if (dev->mac_pid == KERNEL_PID_UNDEF) {
+                    DEBUG("xbee: MAC layer is not ready, ignore incoming data\n");
+
+                    dev->int_state = XBEE_INT_STATE_IDLE;
+
+                    return;
+                }
+
                 XBEE_DETAILED_DEBUG(" -> RX\n");
                 dev->rx_limit = dev->int_size + 1;
                 _put_to_rx_buf(dev, index, c);
