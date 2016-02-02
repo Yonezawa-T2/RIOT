@@ -38,6 +38,7 @@ USEMODULE += gnrc_sixlowpan_border_router_default
 USEMODULE += gnrc_rpl
 # Additional networking modules that can be dropped if not needed
 USEMODULE += gnrc_icmpv6_echo
+USEMODULE += gnrc_ipv6_ext
 # XBee network stack
 USEMODULE += xbee
 USEMODULE += gnrc_nomac
