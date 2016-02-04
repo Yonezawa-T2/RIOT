@@ -26,6 +26,7 @@
 #include <stdint.h>
 
 #include "mutex.h"
+#include "xtimer.h"
 #include "periph/uart.h"
 #include "periph/gpio.h"
 #include "net/gnrc.h"
@@ -149,6 +150,8 @@ typedef struct {
     /* buffer and synchronization for command responses */
     mutex_t resp_lock;                  /**< mutex for waiting for AT command
                                          *   response frames */
+    xtimer_t resp_timer;                /**< timer for AT command response
+                                         *   timeout */
     uint8_t resp_buf[XBEE_MAX_RESP_LENGTH]; /**< AT response data buffer */
     uint16_t resp_count;                /**< counter for ongoing transmission */
     uint16_t resp_limit;                /**< size RESP frame in transferred */

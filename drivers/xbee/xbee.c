@@ -55,6 +55,11 @@
 #define RESET_DELAY                 (10U * 1000U)
 
 /**
+ * @brief   Timeout for receiving AT command response
+ */
+#define RESP_TIMEOUT_USEC           (SEC_IN_USEC)
+
+/**
  * @brief   Start delimiter in API frame mode
  */
 #define API_START_DELIMITER         (0x7e)
@@ -175,9 +180,22 @@ static void _api_at_cmd(xbee_t *dev, uint8_t *cmd, uint8_t size, resp_t *resp)
     /* start send data */
     uart_write(dev->uart, dev->tx_buf, size + 6);
 
+    uint64_t sent_time = xtimer_now64();
+
+    xtimer_set(&(dev->resp_timer), RESP_TIMEOUT_USEC);
+
     /* wait for results */
-    while (dev->resp_limit != dev->resp_count) {
+    while ((dev->resp_limit != dev->resp_count) &&
+           (xtimer_now64() - sent_time < RESP_TIMEOUT_USEC)) {
         mutex_lock(&(dev->resp_lock));
+    }
+
+    if (dev->resp_limit != dev->resp_count) {
+        /* timed out */
+        resp->status = 255;
+        mutex_unlock(&(dev->tx_lock));
+
+        return;
     }
 
     /* populate response data structure */
@@ -519,6 +537,18 @@ static int _set_proto(xbee_t *dev, uint8_t *val, size_t len)
     return sizeof(gnrc_nettype_t);
 }
 
+static void isr_resp_timeout(void *arg)
+{
+    xbee_t *dev = (xbee_t *)arg;
+
+    if (mutex_trylock(&(dev->resp_lock)) == 0) {
+        DEBUG("xbee: response timeout\n");
+        dev->int_state = XBEE_INT_STATE_IDLE;
+    }
+
+    mutex_unlock(&(dev->resp_lock));
+}
+
 /*
  * Driver's "public" functions
  */
@@ -546,6 +576,8 @@ int xbee_init(xbee_t *dev, const xbee_params_t *params)
     /* initialize buffers and locks*/
     mutex_init(&(dev->tx_lock));
     mutex_init(&(dev->resp_lock));
+    dev->resp_timer.callback = isr_resp_timeout;
+    dev->resp_timer.arg = dev;
     dev->resp_limit = 1;    /* needs to be greater then 0 initially */
 #if XBEE_NUM_RX_BUFFER > 1
     cib_init(&(dev->rx_buf_index), XBEE_NUM_RX_BUFFER);
