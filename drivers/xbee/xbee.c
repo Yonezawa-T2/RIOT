@@ -191,7 +191,7 @@ static void _api_at_cmd(xbee_t *dev, uint8_t *cmd, uint8_t size, resp_t *resp)
     }
 
     if (dev->resp_limit != dev->resp_count) {
-        /* timed out */
+        DEBUG("xbee: response timeout\n");
         resp->status = 255;
         mutex_unlock(&(dev->tx_lock));
 
@@ -542,7 +542,6 @@ static void isr_resp_timeout(void *arg)
     xbee_t *dev = (xbee_t *)arg;
 
     if (mutex_trylock(&(dev->resp_lock)) == 0) {
-        DEBUG("xbee: response timeout\n");
         dev->int_state = XBEE_INT_STATE_IDLE;
     }
 
