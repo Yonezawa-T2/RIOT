@@ -137,7 +137,7 @@ static void _receive(gnrc_pktsnip_t *pkt)
     hdr = (udp_hdr_t *)udp->data;
 
     /* validate checksum */
-    if (udp.checksum == 0) {
+    if (byteorder_ntohs(hdr->checksum) == 0) {
         /* RFC 2460 Section 8.1
          * "IPv6 receivers must discard UDP packets containing a zero checksum,
          * and should log the error."
