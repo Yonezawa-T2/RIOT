@@ -22,11 +22,16 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <unistd.h>
+
+#include "net/gnrc.h"
+#include "net/gnrc/ipv6.h"
+#include "net/gnrc/udp.h"
 
 #include "thread.h"
 
@@ -37,6 +42,45 @@ static int server_socket = -1;
 static char server_buffer[SERVER_BUFFER_SIZE];
 static char server_stack[THREAD_STACKSIZE_DEFAULT];
 static msg_t server_msg_queue[SERVER_MSG_QUEUE_SIZE];
+static bool enable_echo = false;
+
+
+static void reply_echo(char *data,
+                       size_t length,
+                       struct sockaddr_in6 *src,
+                       struct sockaddr_in6 *dst) {
+    struct in6_addr addr = dst->sin6_addr;
+    uint16_t src_port = ntohs(src->sin6_port);
+    uint16_t dst_port = ntohs(dst->sin6_port);
+    gnrc_pktsnip_t *payload, *udp, *ip;
+
+    payload = gnrc_pktbuf_add(NULL, data, length, GNRC_NETTYPE_UNDEF);
+    if (payload == NULL) {
+        puts("Error: unable to copy data to packet buffer");
+        return;
+    }
+    /* allocate UDP header */
+    udp = gnrc_udp_hdr_build(payload, (uint8_t *)&src_port, 2, (uint8_t *)&dst_port, 2);
+    if (udp == NULL) {
+        puts("Error: unable to allocate UDP header");
+        gnrc_pktbuf_release(payload);
+        return;
+    }
+    /* allocate IPv6 header */
+    ip = gnrc_ipv6_hdr_build(udp, NULL, 0, (uint8_t *)&addr, sizeof(addr));
+    if (ip == NULL) {
+        puts("Error: unable to allocate IPv6 header");
+        gnrc_pktbuf_release(udp);
+        return;
+    }
+    /* send packet */
+    if (!gnrc_netapi_dispatch_send(GNRC_NETTYPE_UDP, GNRC_NETREG_DEMUX_CTX_ALL, ip)) {
+        puts("Error: unable to locate UDP thread");
+        gnrc_pktbuf_release(ip);
+        return;
+    }
+    printf("Success: send echo\n");
+}
 
 static void *_server_thread(void *args)
 {
@@ -77,7 +121,20 @@ static void *_server_thread(void *args)
         }
         else {
             printf("Received data: ");
-            puts(server_buffer);
+
+            for (int i = 0; i < res; i++) {
+                if (isprint(server_buffer[i]) || isspace(server_buffer[i])) {
+                    putchar(server_buffer[i]);
+                } else {
+                    putchar('?');
+                }
+            }
+
+            putchar('\n');
+
+            if (enable_echo) {
+                reply_echo(server_buffer, res, &server_addr, &src);
+            }
         }
     }
     return NULL;
@@ -142,7 +199,7 @@ static int udp_start_server(char *port_str)
 int udp_cmd(int argc, char **argv)
 {
     if (argc < 2) {
-        printf("usage: %s [send|server]\n", argv[0]);
+        printf("usage: %s [send|server|echo]\n", argv[0]);
         return 1;
     }
 
@@ -173,6 +230,25 @@ int udp_cmd(int argc, char **argv)
                 return 1;
             }
             return udp_start_server(argv[3]);
+        }
+        else {
+            puts("error: invalid command");
+            return 1;
+        }
+    }
+    else if (strcmp(argv[1], "echo") == 0) {
+        if (argc < 3) {
+            printf("usage: %s echo [enable|disable]\n", argv[0]);
+            return 1;
+        }
+
+        if (strcmp(argv[2], "enable") == 0) {
+            enable_echo = true;
+            return 0;
+        }
+        else if (strcmp(argv[2], "disable") == 0) {
+            enable_echo = false;
+            return 0;
         }
         else {
             puts("error: invalid command");
