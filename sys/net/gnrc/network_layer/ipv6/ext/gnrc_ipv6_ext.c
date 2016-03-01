@@ -23,82 +23,274 @@
 #define ENABLE_DEBUG    (0)
 #include "debug.h"
 
-bool gnrc_ipv6_ext_demux(kernel_pid_t iface, gnrc_pktsnip_t *pkt, uint8_t nh)
-{
-    gnrc_pktsnip_t *ext_snip, *tmp;
-    ipv6_ext_t *ext;
-    unsigned int offset = 0;
-    ipv6_hdr_t *hdr;
-    int res;
-
-    ext = (ipv6_ext_t *) pkt->data;
-
-    switch (nh) {
-    case PROTNUM_IPV6_EXT_HOPOPT:
-    case PROTNUM_IPV6_EXT_DST:
-    case PROTNUM_IPV6_EXT_RH:
 #ifdef MODULE_GNRC_RPL_SRH
-        // FIXME: ipv6_ext_rh_process overrites not only pkt->data but also hdr->data.
-        if ((tmp = gnrc_pktbuf_start_write(pkt)) == NULL) {
+
+static size_t _cumulate_size_upto(gnrc_pktsnip_t *pkt, gnrc_nettype_t type)
+{
+    size_t sum = 0;
+
+    for (; pkt != NULL; pkt = pkt->next) {
+        sum += pkt->size;
+
+        if (pkt->type == type) {
+            break;
+        }
+    }
+
+    return sum;
+}
+
+/**
+ * @brief duplicates pktsnip chain upto (including) a snip with the given type
+ *        as a continuous snip.
+ *
+ *          Example:
+ *              Input:
+ *                                                                  buffer
+ *              +---------------------------+                      +------+
+ *              | size = 8                  | data       +-------->|      |
+ *              | type = NETTYPE_IPV6_EXT   |------------+         +------+
+ *              +---------------------------+                      .      .
+ *                    | next                                       .      .
+ *                    v                                            .      .
+ *              +---------------------------+                      +------+
+ *              | size = 40                 | data    +----------->|      |
+ *              | type = NETTYPE_IPV6       |---------+            +------+
+ *              +---------------------------+                      .      .
+ *                    | next                                       .      .
+ *                    v
+ *              +---------------------------+                      +------+
+ *              | size = 14                 | data +-------------->|      |
+ *              | type = NETTYPE_NETIF      |------+               +------+
+ *              +---------------------------+                      .      .
+ *
+ *
+ *              Output:
+ *                                                                  buffer
+ *              +---------------------------+                      +------+
+ *              | size = 48                 | data       +-------->|      |
+ *              | type = NETTYPE_IPV6       |------------+         |      |
+ *              +---------------------------+                      |      |
+ *                    |                                            +------+
+ *                    |                                            .      .
+ *                    | next                                       .      .
+ *                    v
+ *              +---------------------------+                      +------+
+ *              | size = 14                 | data +-------------->|      |
+ *              | type = NETTYPE_NETIF      |------+               +------+
+ *              +---------------------------+                      .      .
+ *
+ *        The original snip is keeped as is except `users` decremented.
+ *
+ * @param[in,out] pkt   The snip to duplicate.
+ * @param[in]     type  The type of snip to stop duplication.
+ *
+ * @return The duplicated snip, if succeeded.
+ * @return NULL, if no space is left in the packet buffer.
+ */
+static gnrc_pktsnip_t *_duplicate_upto(gnrc_pktsnip_t *pkt, gnrc_nettype_t type)
+{
+    bool is_shared = pkt->users > 1;
+    size_t size = _cumulate_size_upto(pkt, type);
+
+    DEBUG("ipv6_ext: duplicating %d octets\n", (int) size);
+
+    gnrc_pktsnip_t *target = gnrc_pktsnip_search_type(pkt, GNRC_NETTYPE_IPV6);
+    gnrc_pktsnip_t *next = (target == NULL) ? NULL : target->next;
+    gnrc_pktsnip_t *new = gnrc_pktbuf_add(next, NULL, size, type);
+
+    if (new == NULL) {
+        return NULL;
+    }
+
+    /* copy payloads */
+    for (; pkt != NULL; pkt = pkt->next) {
+        uint8_t *dest = ((uint8_t *)new->data) + (size - pkt->size);
+
+        memcpy(dest, pkt->data, pkt->size);
+
+        size -= pkt->size;
+
+        if (pkt->type == type) {
+            break;
+        }
+    }
+
+    /* decrements reference counters */
+
+    if (target != NULL) {
+        target->next = NULL;
+    }
+
+    gnrc_pktbuf_release(pkt);
+
+    if (is_shared && target != NULL) {
+        target->next = next;
+    }
+
+    return new;
+}
+
+
+enum gnrc_ipv6_ext_demux_status {
+    GNRC_IPV6_EXT_OK,
+    GNRC_IPV6_EXT_FORWARDED,
+    GNRC_IPV6_EXT_ERROR,
+};
+
+static enum gnrc_ipv6_ext_demux_status _handle_rh(gnrc_pktsnip_t *pkt)
+{
+    gnrc_pktsnip_t *orig_pkt, *tmp;
+    ipv6_ext_t *ext = (ipv6_ext_t *) pkt->data;
+    size_t current_offset;
+    ipv6_hdr_t *hdr;
+
+    /* check seg_left early to avoid duplicating the packet */
+    if (((ipv6_ext_rh_t *)ext)->seg_left == 0) {
+        return GNRC_IPV6_EXT_OK;
+    }
+
+    /* We cannot use `gnrc_pktbuf_start_write` since it duplicates only
+       the head. `ipv6_ext_rh_process` modifies the IPv6 header as well as
+       the extension header */
+
+    current_offset = _cumulate_size_upto(pkt->next, GNRC_NETTYPE_IPV6);
+    orig_pkt = pkt;
+
+    if (pkt->users != 1) {
+        if ((tmp = _duplicate_upto(pkt, GNRC_NETTYPE_IPV6)) == NULL) {
             DEBUG("ipv6: could not get a copy of pkt\n");
             gnrc_pktbuf_release(pkt);
-            return false;
+            return GNRC_IPV6_EXT_ERROR;
         }
         pkt = tmp;
+        hdr = pkt->data;
+        ext = (ipv6_ext_t *)(((uint8_t *)pkt->data) + current_offset);
+    }
+    else {
         hdr = gnrc_pktsnip_search_type(pkt, GNRC_NETTYPE_IPV6)->data;
-        ext = pkt->data;
-        // FIXME: notify before process?
-        res = ipv6_ext_rh_process(hdr, (ipv6_ext_rh_t *)ext);
-        if (res == EXT_RH_CODE_ERROR) {
+    }
+
+    switch (ipv6_ext_rh_process(hdr, (ipv6_ext_rh_t *)ext)) {
+        case EXT_RH_CODE_ERROR:
             /* TODO: send ICMPv6 error codes */
             gnrc_pktbuf_release(pkt);
-            return false;
-        }
-        else if (res == EXT_RH_CODE_FORWARD) {
+            return GNRC_IPV6_EXT_ERROR;
+
+        case EXT_RH_CODE_FORWARD:
             /* forward packet */
-            if (!gnrc_netapi_dispatch_receive(GNRC_NETTYPE_IPV6, GNRC_NETREG_DEMUX_CTX_ALL,
-                                              pkt)) {
+            if (!gnrc_netapi_dispatch_receive(GNRC_NETTYPE_IPV6, GNRC_NETREG_DEMUX_CTX_ALL, pkt)) {
                 DEBUG("ipv6: could not dispatch packet to the ipv6 thread\n");
                 gnrc_pktbuf_release(pkt);
             }
-            return false;
-        }
-        else if (res == EXT_RH_CODE_OK) {
-            nh = ext->nh;
-            offset += ((ext->len * IPV6_EXT_LEN_UNIT) + IPV6_EXT_LEN_UNIT);
-            ext = ipv6_ext_get_next((ipv6_ext_t *)ext);
-        }
-        break;
-#else
-        (void)hdr;
-        (void)tmp;
-        (void)res;
+            return GNRC_IPV6_EXT_FORWARDED;
+
+        case EXT_RH_CODE_OK:
+            /* this should not happen since we checked seg_left early */
+
+            if (pkt != orig_pkt) {
+                /* frees the duplicated header */
+                gnrc_pktbuf_release(pkt);
+            }
+
+            return GNRC_IPV6_EXT_OK;
+    }
+
+    return GNRC_IPV6_EXT_OK;
+}
+
 #endif
 
-    case PROTNUM_IPV6_EXT_FRAG:
-    case PROTNUM_IPV6_EXT_AH:
-    case PROTNUM_IPV6_EXT_ESP:
-    case PROTNUM_IPV6_EXT_MOB:
-        /* TODO: add handling of types */
-        nh = ext->nh;
-        DEBUG("ipv6_ext: next header = %" PRIu8 "\n", nh);
-        offset = ((ext->len * IPV6_EXT_LEN_UNIT) + IPV6_EXT_LEN_UNIT);
-        break;
+/*
+ *         current                 pkt
+ *         |                       |
+ *         v                       v
+ * IPv6 <- IPv6_EXT <- IPv6_EXT <- UNDEF
+ */
+void gnrc_ipv6_ext_demux(kernel_pid_t iface,
+                         gnrc_pktsnip_t *current,
+                         gnrc_pktsnip_t *pkt,
+                         uint8_t nh)
+{
+    gnrc_pktsnip_t *ext_snip, *tmp, *next;
+    ipv6_ext_t *ext;
+    size_t offset = 0;
 
-    default:
-        break;
+    ext = (ipv6_ext_t *) current->data;
+
+    switch (nh) {
+        case PROTNUM_IPV6_EXT_RH:
+#ifdef MODULE_GNRC_RPL_SRH
+            switch (_handle_rh(pkt)) {
+                case GNRC_IPV6_EXT_OK:
+                    /* We are the final destination. So proceeds like normal packet. */
+                    nh = ext->nh;
+                    DEBUG("ipv6_ext: next header = %" PRIu8 "\n", nh);
+                    offset = ((ext->len * IPV6_EXT_LEN_UNIT) + IPV6_EXT_LEN_UNIT);
+                    break;
+
+                case GNRC_IPV6_EXT_ERROR:
+                    /* already released by _handle_rh, so no release here */
+                    return;
+
+                case GNRC_IPV6_EXT_FORWARDED:
+                    return;
+            }
+
+            break;
+#endif
+
+        case PROTNUM_IPV6_EXT_HOPOPT:
+        case PROTNUM_IPV6_EXT_DST:
+        case PROTNUM_IPV6_EXT_FRAG:
+        case PROTNUM_IPV6_EXT_AH:
+        case PROTNUM_IPV6_EXT_ESP:
+        case PROTNUM_IPV6_EXT_MOB:
+            /* TODO: add handling of types */
+            nh = ext->nh;
+            DEBUG("ipv6_ext: next header = %" PRIu8 "\n", nh);
+            offset = ((ext->len * IPV6_EXT_LEN_UNIT) + IPV6_EXT_LEN_UNIT);
+            break;
+
+        default:
+            DEBUG("ipv6_ext: unknown next header: %" PRIu8 "\n", nh);
+            gnrc_pktbuf_release(pkt);
+            return;
     }
 
-    ext_snip = gnrc_pktbuf_mark(pkt, offset, GNRC_NETTYPE_IPV6_EXT);
+    if (current == pkt) {
+        if ((tmp = gnrc_pktbuf_start_write(pkt)) == NULL) {
+            DEBUG("ipv6: could not get a copy of pkt\n");
+            gnrc_pktbuf_release(pkt);
+            return;
+        }
+        pkt = tmp;
 
-    if (ext_snip == NULL) {
-        gnrc_pktbuf_release(pkt);
-        return false;
+        ext_snip = gnrc_pktbuf_mark(pkt, offset, GNRC_NETTYPE_IPV6_EXT);
+        next = pkt;
+
+        if (ext_snip == NULL) {
+            gnrc_pktbuf_release(pkt);
+            return;
+        }
+    } else {
+        /* the header is already marked */
+
+        next = NULL;
+
+        for (tmp = pkt; tmp != NULL; tmp = tmp->next) {
+            if (tmp->next == current) {
+                next = tmp;
+                break;
+            }
+        }
+
+        assert(next != NULL);
     }
 
-    gnrc_ipv6_demux(iface, pkt, nh);    /* demultiplex next header */
+    gnrc_ipv6_demux(iface, next, pkt, nh);    /* demultiplex next header */
 
-    return true;
+    return;
 }
 
 gnrc_pktsnip_t *gnrc_ipv6_ext_build(gnrc_pktsnip_t *ipv6, gnrc_pktsnip_t *next,
