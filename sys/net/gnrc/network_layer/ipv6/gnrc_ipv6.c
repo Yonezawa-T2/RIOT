@@ -852,6 +852,11 @@ static void _receive(gnrc_pktsnip_t *pkt)
     if (byteorder_ntohs(hdr->len) < pkt->size) {
         gnrc_pktbuf_realloc_data(pkt, byteorder_ntohs(hdr->len));
     }
+    else if (byteorder_ntohs(hdr->len) > pkt->size) {
+        DEBUG("ipv6: invalid payload length, dropping packet\n");
+        gnrc_pktbuf_release(pkt);
+        return;
+    }
 
     DEBUG("ipv6: Received (src = %s, ",
           ipv6_addr_to_str(addr_str, &(hdr->src), sizeof(addr_str)));
