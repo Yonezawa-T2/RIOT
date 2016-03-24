@@ -624,8 +624,7 @@ static int _netif_set_state(kernel_pid_t dev, char *state_str)
     return 0;
 }
 
-static int _netif_set_encrypt(kernel_pid_t dev, netopt_t opt,
-                           char *encrypt_str)
+static int _netif_set_encrypt(kernel_pid_t dev, netopt_t opt, char *encrypt_str)
 {
     netopt_enable_t set;
     size_t size = 1;
@@ -654,8 +653,7 @@ static int _netif_set_encrypt(kernel_pid_t dev, netopt_t opt,
     return 0;
 }
 
-static int _netif_set_encrypt_key(kernel_pid_t dev, netopt_t opt,
-                           char *key_str)
+static int _netif_set_encrypt_key(kernel_pid_t dev, netopt_t opt, char *key_str)
 {
     size_t key_len = strlen(key_str);
     uint8_t key[key_len];
@@ -669,10 +667,10 @@ static int _netif_set_encrypt_key(kernel_pid_t dev, netopt_t opt,
         printf("error: invalid key size.");
         return 1;
     }
-    /*Convert any char from ASCII table in hex format*/
-   for (int i = 0; i < key_len; i++) {
-       key[i] = (uint8_t)key_str[i];
-   }
+    /* Convert any char from ASCII table in hex format */
+    for (size_t i = 0; i < key_len; i++) {
+        key[i] = (uint8_t)key_str[i];
+    }
 
     if (gnrc_netapi_set(dev, opt, 0, key, key_len) < 0) {
         printf("error: unable to set ");
@@ -684,8 +682,9 @@ static int _netif_set_encrypt_key(kernel_pid_t dev, netopt_t opt,
     printf("success: set ");
     _print_netopt(opt);
     printf(" on interface %" PRIkernel_pid " to \n", dev);
-    for(int i=0;i<key_len;i++){//print the hex value of the key
-    printf("%02x",key[i]);
+    for (size_t i = 0; i < key_len; i++) {
+        /* print the hex value of the key */
+        printf("%02x", key[i]);
     }
     puts("");
     return 0;
