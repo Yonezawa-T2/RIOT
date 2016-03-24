@@ -584,10 +584,9 @@ static int _netif_set_state(kernel_pid_t dev, char *state_str)
     return 0;
 }
 
-static int _netif_set_encrypt(kernel_pid_t dev, ng_netconf_opt_t opt,
-                           char *encrypt_str)
+static int _netif_set_encrypt(kernel_pid_t dev, netopt_t opt, char *encrypt_str)
 {
-    ng_netconf_enable_t set;
+    netopt_enable_t set;
     size_t size = 1;
     if ((strcmp("on", encrypt_str) == 0) || (strcmp("ON", encrypt_str) == 0)) {
         set = NETOPT_ENABLE;
@@ -614,8 +613,7 @@ static int _netif_set_encrypt(kernel_pid_t dev, ng_netconf_opt_t opt,
     return 0;
 }
 
-static int _netif_set_encrypt_key(kernel_pid_t dev, ng_netconf_opt_t opt,
-                           char *key_str)
+static int _netif_set_encrypt_key(kernel_pid_t dev, netopt_t opt, char *key_str)
 {
     size_t key_len = strlen(key_str);
     uint8_t key[key_len];
@@ -629,10 +627,10 @@ static int _netif_set_encrypt_key(kernel_pid_t dev, ng_netconf_opt_t opt,
         printf("error: invalid key size.");
         return 1;
     }
-    /*Convert any char from ASCII table in hex format*/
-   for (int i = 0; i < key_len; i++) {
-       key[i] = (uint8_t)key_str[i];
-   }
+    /* Convert any char from ASCII table in hex format */
+    for (size_t i = 0; i < key_len; i++) {
+        key[i] = (uint8_t)key_str[i];
+    }
 
     if (gnrc_netapi_set(dev, opt, 0, key, key_len) < 0) {
         printf("error: unable to set ");
@@ -644,8 +642,9 @@ static int _netif_set_encrypt_key(kernel_pid_t dev, ng_netconf_opt_t opt,
     printf("success: set ");
     _print_netopt(opt);
     printf(" on interface %" PRIkernel_pid " to \n", dev);
-    for(int i=0;i<key_len;i++){//print the hex value of the key
-    printf("%02x",key[i]);
+    for (size_t i = 0; i < key_len; i++) {
+        /* print the hex value of the key */
+        printf("%02x", key[i]);
     }
     puts("");
     return 0;
@@ -686,6 +685,7 @@ static int _netif_set(char *cmd_name, kernel_pid_t dev, char *key, char *value)
     }
     else if (strcmp("cca_threshold", key) == 0) {
         return _netif_set_u8(dev, NETOPT_CCA_THRESHOLD, value);
+    }
     else if (strcmp("encrypt", key) == 0) {
         return _netif_set_encrypt(dev, NETOPT_ENCRYPTION, value);
     }
