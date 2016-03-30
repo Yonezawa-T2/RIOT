@@ -29,7 +29,7 @@ static xbee_params_t xbee_params[] = {
       .baudrate = 57600U,
       // .baudrate = 115200U,
       .sleep_pin = GPIO_UNDEF,
-      .status_pin = GPIO_UNDEF
+      .reset_pin = GPIO_UNDEF
     },
 };
 

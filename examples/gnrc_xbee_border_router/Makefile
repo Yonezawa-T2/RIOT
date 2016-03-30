@@ -30,7 +30,7 @@ CFLAGS += -g
 
 # Include packages that pull up and auto-init the link layer.
 # NOTE: 6LoWPAN will be included if IEEE802.15.4 devices are present
-USEMODULE += gnrc_netif_default
+USEMODULE += gnrc_netdev_default
 USEMODULE += auto_init_gnrc_netif
 # Specify the mandatory networking modules for 6LoWPAN border router
 USEMODULE += gnrc_sixlowpan_border_router_default
@@ -38,6 +38,7 @@ USEMODULE += gnrc_sixlowpan_border_router_default
 USEMODULE += gnrc_rpl
 # Additional networking modules that can be dropped if not needed
 USEMODULE += gnrc_icmpv6_echo
+USEMODULE += gnrc_icmpv6_error
 USEMODULE += gnrc_ipv6_ext
 # XBee network stack
 USEMODULE += xbee
