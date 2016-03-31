@@ -392,7 +392,8 @@ static int _set_proto(xbee_t *dev, uint8_t *val, size_t len)
     return sizeof(gnrc_nettype_t);
 }
 
-static int _set_encryption(xbee_t *dev, uint8_t *val, size_t len)
+#ifdef MODULE_XBEE_ENCRYPTION
+static int _set_encryption(xbee_t *dev, uint8_t *val)
 {
     uint8_t cmd[3];
     resp_t resp;
@@ -433,6 +434,7 @@ static int _set_encryption_key(xbee_t *dev, uint8_t *val, size_t len)
         }
         return -ECANCELED;
 }
+#endif
 
 /*
  * Driver's "public" functions
@@ -710,10 +712,12 @@ static int _set(gnrc_netdev_t *netdev, netopt_t opt, void *value, size_t value_l
             return _set_panid(dev, (uint8_t *)value, value_len);
         case NETOPT_PROTO:
             return _set_proto(dev, (uint8_t *)value, value_len);
+#ifdef MODULE_XBEE_ENCRYPTION
         case NETOPT_ENCRYPTION:
             return _set_encryption(dev, (uint8_t *)value);
         case NETOPT_ENCRYPTION_KEY:
             return _set_encryption_key(dev, (uint8_t *)value, value_len);
+#endif
         default:
             return -ENOTSUP;
     }
