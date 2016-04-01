@@ -852,7 +852,7 @@ static void _receive(gnrc_pktsnip_t *pkt)
     if (byteorder_ntohs(hdr->len) < pkt->size) {
         gnrc_pktbuf_realloc_data(pkt, byteorder_ntohs(hdr->len));
     }
-    else if (byteorder_ntohs(hdr->len) > pkt->size) {
+    else if (byteorder_ntohs(hdr->len) > gnrc_pkt_len_upto(pkt, GNRC_NETTYPE_IPV6)) {
         DEBUG("ipv6: invalid payload length, dropping packet\n");
         gnrc_pktbuf_release(pkt);
         return;
