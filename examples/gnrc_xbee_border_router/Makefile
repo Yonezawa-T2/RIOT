@@ -40,6 +40,7 @@ USEMODULE += gnrc_rpl
 USEMODULE += gnrc_icmpv6_echo
 USEMODULE += gnrc_icmpv6_error
 USEMODULE += gnrc_ipv6_ext
+USEMODULE += gnrc_udp
 # XBee network stack
 USEMODULE += xbee
 USEMODULE += gnrc_nomac
