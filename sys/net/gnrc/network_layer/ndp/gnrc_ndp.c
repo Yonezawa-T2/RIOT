@@ -507,6 +507,7 @@ static inline void _set_reach_time(gnrc_ipv6_netif_t *if_entry, uint32_t mean)
  */
 static void _add_prefix_route(kernel_pid_t iface,
                               uint8_t *prefix,
+                              uint8_t prefix_length,
                               uint8_t *next_hop,
                               uint32_t lifetime,
                               bool only_if_root) {
@@ -525,7 +526,8 @@ static void _add_prefix_route(kernel_pid_t iface,
 
         if (lifetime > 0) {
             fib_add_entry(&gnrc_ipv6_fib_table, iface,
-                          prefix, sizeof(ipv6_addr_t), FIB_FLAG_NET_PREFIX,
+                          prefix, sizeof(ipv6_addr_t),
+                          ((uint32_t)prefix_length) << FIB_FLAG_NET_PREFIX_SHIFT,
                           next_hop, sizeof(ipv6_addr_t), 0,
                           lifetime);
         }
@@ -657,6 +659,7 @@ void gnrc_ndp_rtr_adv_handle(kernel_pid_t iface, gnrc_pktsnip_t *pkt, ipv6_hdr_t
 
                     _add_prefix_route(iface,
                                       pi_opt->prefix.u8,
+                                      pi_opt->prefix_len,
                                       ipv6->src.u8,
                                       lifetime,
                                       false);
@@ -731,6 +734,7 @@ void gnrc_ndp_rtr_adv_handle(kernel_pid_t iface, gnrc_pktsnip_t *pkt, ipv6_hdr_t
 
         _add_prefix_route(iface,
                           default_route_prefix.u8,
+                          0,
                           ipv6->src.u8,
                           (uint32_t) byteorder_ntohs(rtr_adv->ltime) * 1000,
                           GNRC_RPL_ROOT_NODE);
