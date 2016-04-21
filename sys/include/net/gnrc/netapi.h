@@ -91,7 +91,6 @@ int gnrc_netapi_send(kernel_pid_t pid, gnrc_pktsnip_t *pkt);
  * @param[in] demux_ctx demultiplexing context for @p type.
  * @param[in] cmd       command for all subscribers
  * @param[in] pkt       pointer into the packet buffer holding the data to send
- * @param[in] release   releases the pkt after dispatching if true
  *
  * @return Number of subscribers to (@p type, @p demux_ctx).
  */
