@@ -198,6 +198,7 @@ void gnrc_ipv6_ext_demux(kernel_pid_t iface,
                     return;
                 }
 
+                gnrc_pktbuf_hold(pkt, 1);   /* don't release on next dispatch */
                 gnrc_netapi_dispatch(GNRC_NETTYPE_IPV6, nh, GNRC_NETAPI_MSG_TYPE_RCV, pkt, false);
 
                 break;

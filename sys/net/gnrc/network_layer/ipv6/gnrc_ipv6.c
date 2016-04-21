@@ -110,6 +110,8 @@ static bool _dispatch_next_header(gnrc_pktsnip_t *current,
     if (current->type != GNRC_NETTYPE_IPV6_EXT || current->next->type == GNRC_NETTYPE_IPV6) {
         should_release = (gnrc_netreg_num(GNRC_NETTYPE_IPV6, nh) == 0) && !interested;
 
+        gnrc_pktbuf_hold(pkt, 1);   /* don't remove from packet buffer in
+                                     * next dispatch */
         if (!gnrc_netapi_dispatch(current->type,
                                   GNRC_NETREG_DEMUX_CTX_ALL,
                                   GNRC_NETAPI_MSG_TYPE_RCV,
@@ -127,7 +129,8 @@ static bool _dispatch_next_header(gnrc_pktsnip_t *current,
     }
 
     should_release = !interested;
-
+    gnrc_pktbuf_hold(pkt, 1);       /* don't remove from packet buffer in
+                                     * next dispatch */
     if (!(gnrc_netapi_dispatch(GNRC_NETTYPE_IPV6,
                                nh,
                                GNRC_NETAPI_MSG_TYPE_RCV,
@@ -885,7 +888,7 @@ static void _receive(gnrc_pktsnip_t *pkt)
          * links."
          */
         if ((ipv6_addr_is_link_local(&(hdr->src))) || (ipv6_addr_is_link_local(&(hdr->dst)))) {
-            DEBUG("ipv6: do not forward packets with link-local source or"\
+            DEBUG("ipv6: do not forward packets with link-local source or"
                   " destination address\n");
             gnrc_pktbuf_release(pkt);
             return;
