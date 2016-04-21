@@ -102,25 +102,28 @@ static bool _dispatch_next_header(gnrc_pktsnip_t *current,
                                   uint8_t nh,
                                   bool interested)
 {
-    bool should_release;
+#ifdef MODULE_GNRC_IPV6_EXT
+    const bool current_is_ipv6 = ((current->type != GNRC_NETTYPE_IPV6_EXT) ||
+                                  (current->next->type == GNRC_NETTYPE_IPV6));
+#else
+    const bool current_is_ipv6 = (current->next->type == GNRC_NETTYPE_IPV6);
+#endif
 
     DEBUG("ipv6: forward nh = %u to other threads\n", nh);
 
     /* dispatch IPv6 extension header only once */
-    if (current->type != GNRC_NETTYPE_IPV6_EXT || current->next->type == GNRC_NETTYPE_IPV6) {
-        should_release = (gnrc_netreg_num(GNRC_NETTYPE_IPV6, nh) == 0) && !interested;
+    if (current_is_ipv6) {
+        bool should_release = (gnrc_netreg_num(GNRC_NETTYPE_IPV6, nh) == 0) &&
+                              (!interested);
 
-        gnrc_pktbuf_hold(pkt, 1);   /* don't remove from packet buffer in
-                                     * next dispatch */
+        if (!should_release) {
+            gnrc_pktbuf_hold(pkt, 1);   /* don't remove from packet buffer in
+                                         * next dispatch */
+        }
         if (!gnrc_netapi_dispatch(current->type,
                                   GNRC_NETREG_DEMUX_CTX_ALL,
                                   GNRC_NETAPI_MSG_TYPE_RCV,
-                                  pkt,
-                                  should_release)) {
-            if (should_release) {
-                gnrc_pktbuf_release(pkt);
-                return false;
-            }
+                                  pkt)) {
         }
 
         if (should_release) {
@@ -128,18 +131,15 @@ static bool _dispatch_next_header(gnrc_pktsnip_t *current,
         }
     }
 
-    should_release = !interested;
-    gnrc_pktbuf_hold(pkt, 1);       /* don't remove from packet buffer in
+    if (interested) {
+        gnrc_pktbuf_hold(pkt, 1);   /* don't remove from packet buffer in
                                      * next dispatch */
+    }
     if (!(gnrc_netapi_dispatch(GNRC_NETTYPE_IPV6,
                                nh,
                                GNRC_NETAPI_MSG_TYPE_RCV,
-                               pkt,
-                               should_release))) {
-        if (should_release) {
-            gnrc_pktbuf_release(pkt);
-            return false;
-        }
+                               pkt)) && (!interested)) {
+        return false;
     }
 
     return true;

@@ -44,6 +44,7 @@ static inline int _get_set(kernel_pid_t pid, uint16_t type,
     msg_t cmd;
     msg_t ack;
     gnrc_netapi_opt_t o;
+
     /* set ńetapi's option struct */
     o.opt = opt;
     o.context = context;
@@ -61,6 +62,7 @@ static inline int _get_set(kernel_pid_t pid, uint16_t type,
 static inline int _snd_rcv(kernel_pid_t pid, uint16_t type, gnrc_pktsnip_t *pkt)
 {
     msg_t msg;
+
     /* set the outgoing message's fields */
     msg.type = type;
     msg.content.ptr = (void *)pkt;
@@ -74,14 +76,14 @@ static inline int _snd_rcv(kernel_pid_t pid, uint16_t type, gnrc_pktsnip_t *pkt)
 }
 
 int gnrc_netapi_dispatch(gnrc_nettype_t type, uint32_t demux_ctx,
-                         uint16_t cmd, gnrc_pktsnip_t *pkt, bool release)
+                         uint16_t cmd, gnrc_pktsnip_t *pkt)
 {
     int numof = gnrc_netreg_num(type, demux_ctx);
 
     if (numof != 0) {
         gnrc_netreg_entry_t *sendto = gnrc_netreg_lookup(type, demux_ctx);
 
-        gnrc_pktbuf_hold(pkt, release ? numof - 1 : numof);
+        gnrc_pktbuf_hold(pkt, numof);
 
         while (sendto) {
             if (_snd_rcv(sendto->pid, cmd, pkt) < 1) {
