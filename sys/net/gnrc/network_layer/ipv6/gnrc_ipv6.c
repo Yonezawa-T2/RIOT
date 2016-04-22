@@ -97,22 +97,22 @@ kernel_pid_t gnrc_ipv6_init(void)
     return gnrc_ipv6_pid;
 }
 
-static bool _dispatch_next_header(gnrc_pktsnip_t *current,
+static void _dispatch_next_header(gnrc_pktsnip_t *current,
                                   gnrc_pktsnip_t *pkt,
                                   uint8_t nh,
                                   bool interested)
 {
 #ifdef MODULE_GNRC_IPV6_EXT
-    const bool current_is_ipv6 = ((current->type != GNRC_NETTYPE_IPV6_EXT) ||
-                                  (current->next->type == GNRC_NETTYPE_IPV6));
+    const bool should_dispatch_current_type = ((current->type != GNRC_NETTYPE_IPV6_EXT) ||
+                                               (current->next->type == GNRC_NETTYPE_IPV6));
 #else
-    const bool current_is_ipv6 = (current->next->type == GNRC_NETTYPE_IPV6);
+    const bool should_dispatch_current_type = (current->next->type == GNRC_NETTYPE_IPV6);
 #endif
 
     DEBUG("ipv6: forward nh = %u to other threads\n", nh);
 
     /* dispatch IPv6 extension header only once */
-    if (current_is_ipv6) {
+    if (should_dispatch_current_type) {
         bool should_release = (gnrc_netreg_num(GNRC_NETTYPE_IPV6, nh) == 0) &&
                               (!interested);
 
@@ -124,10 +124,11 @@ static bool _dispatch_next_header(gnrc_pktsnip_t *current,
                                   GNRC_NETREG_DEMUX_CTX_ALL,
                                   GNRC_NETAPI_MSG_TYPE_RCV,
                                   pkt)) {
+            gnrc_pktbuf_release(pkt);
         }
 
         if (should_release) {
-            return true;
+            return;
         }
     }
 
@@ -138,11 +139,9 @@ static bool _dispatch_next_header(gnrc_pktsnip_t *current,
     if (!(gnrc_netapi_dispatch(GNRC_NETTYPE_IPV6,
                                nh,
                                GNRC_NETAPI_MSG_TYPE_RCV,
-                               pkt)) && (!interested)) {
-        return false;
+                               pkt))) {
+        gnrc_pktbuf_release(pkt);
     }
-
-    return true;
 }
 
 /*
@@ -202,9 +201,7 @@ void gnrc_ipv6_demux(kernel_pid_t iface, gnrc_pktsnip_t *current, gnrc_pktsnip_t
             break;
     }
 
-    if (!_dispatch_next_header(current, pkt, nh, interested)) {
-        return;
-    }
+    _dispatch_next_header(current, pkt, nh, interested);
 
     if (!interested) {
         return;
